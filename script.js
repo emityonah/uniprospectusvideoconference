@@ -1,155 +1,113 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+let currentCallId = null;
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
-    apiKey: "AIzaSyC4ascyIlhw04oVgYV7dZoPTA7u98mxvtY",
-    authDomain: "uniprospectus-video-conference.firebaseapp.com",
-    projectId: "uniprospectus-video-conference",
-    storageBucket: "uniprospectus-video-conference.appspot.com",
-    messagingSenderId: "200861492189",
-    appId: "1:200861492189:web:311449724e11c249f54c34",
-    measurementId: "G-44RM0DF06W"
+// Set the announcement based on user input and include the secret code
+document.getElementById('setAnnouncement').onclick = () => {
+    const meetingDate = document.getElementById('meetingDate').value;
+    const meetingTime = document.getElementById('meetingTime').value;
+    const meetingDescription = document.getElementById('meetingDescription').value;
+
+    if (meetingDate && meetingTime && meetingDescription) {
+        // Generate a secret code if it doesn't already exist
+        if (!currentCallId) {
+            currentCallId = createSecretCode();
+        }
+
+        // Create a new announcement element
+        const announcementDiv = document.createElement('div');
+        announcementDiv.style.backgroundColor = 'yellow';
+        announcementDiv.style.padding = '10px';
+        announcementDiv.style.marginBottom = '15px';
+
+        announcementDiv.innerHTML = `
+            <strong>Announcement:</strong><br>
+            <strong>Date:</strong> ${meetingDate}<br>
+            <strong>Time:</strong> ${meetingTime}<br>
+            <strong>Description:</strong> ${meetingDescription}<br>
+            <strong>Secret Code:</strong> ${currentCallId}
+        `;
+
+        // Append the new announcement to the container
+        document.getElementById('announcementContainer').appendChild(announcementDiv);
+
+        // Optionally, you can reset the input fields after the announcement is set
+        document.getElementById('meetingDate').value = '';
+        document.getElementById('meetingTime').value = '';
+        document.getElementById('meetingDescription').value = '';
+
+    } else {
+        alert('Please fill in all fields before setting the announcement.');
+    }
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const firestore = getFirestore(app); // Initialize Firestore
+// Show the secret code input when creating or joining a meeting
+document.getElementById('createMeeting').onclick = () => {
+    document.getElementById('landingPage').style.display = 'none';
+    document.getElementById('secretCodeContainer').style.display = 'block';
+    currentCallId = createSecretCode(); // Create a secret code
+    document.getElementById('secretCode').value = currentCallId; // Display the code for the host
+};
 
-// Set up WebRTC peer connection with a STUN server
-const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-let peerConnections = {};
-const localVideo = document.getElementById('localVideo');
-const remoteVideos = document.getElementById('remoteVideos');
+document.getElementById('joinMeeting').onclick = () => {
+    document.getElementById('landingPage').style.display = 'none';
+    document.getElementById('secretCodeContainer').style.display = 'block';
+};
 
-// Access the user's camera and microphone
-navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    .then(stream => {
-        localVideo.srcObject = stream;
+// Back to landing page button
+document.getElementById('backToLanding').onclick = () => {
+    document.getElementById('secretCodeContainer').style.display = 'none';
+    document.getElementById('landingPage').style.display = 'block';
+};
 
-        // Add local stream tracks to peer connection when creating a new connection
-        const localTracks = stream.getTracks();
-        for (const callId in peerConnections) {
-            localTracks.forEach(track => {
-                peerConnections[callId].addTrack(track, stream);
-            });
-        }
-    })
-    .catch(error => console.error('Error accessing media devices:', error));
+// Proceed button to either start or join a meeting
+document.getElementById('proceed').onclick = () => {
+    const secretCode = document.getElementById('secretCode').value;
+    if (currentCallId) {
+        startMeeting(currentCallId); // Start meeting as host
+    } else {
+        joinMeeting(secretCode); // Join meeting as participant
+    }
+};
 
-// Display the remote video stream
-function addRemoteStream(stream, callId) {
-    const remoteVideo = document.createElement('video');
-    remoteVideo.srcObject = stream;
-    remoteVideo.autoplay = true;
-    remoteVideo.style.width = '300px'; // Set fixed width for remote video
-    remoteVideo.style.border = '3px solid #007bff';
-    remoteVideo.style.borderRadius = '8px';
-    remoteVideo.style.margin = '5px';
-    remoteVideos.appendChild(remoteVideo);
+// Function to create a secret code
+function createSecretCode() {
+    const code = Math.random().toString(36).substring(2, 8); // Generates a random code
+    return code;
 }
 
-// Function to create a call (SDP offer)
-async function createOffer() {
-    const callDoc = firestore.collection('calls').doc();
-    const offerCandidates = callDoc.collection('offerCandidates');
+// Function to start the meeting
+function startMeeting(code) {
+    document.getElementById('hostContainer').style.display = 'block'; // Show host view
+    document.getElementById('localVideo').style.display = 'block'; // Show local video for host
+    initializeVideoStream('localVideo'); // Initialize video stream for host
+}
 
-    const callIdElement = document.getElementById('callId');
-    callIdElement.value = callDoc.id; // Display the call ID to the user
+// Function to join the meeting
+function joinMeeting(code) {
+    document.getElementById('participantContainer').style.display = 'block'; // Show participant view
+    document.getElementById('localVideoParticipant').style.display = 'block'; // Show local video for participant
+    initializeVideoStream('localVideoParticipant'); // Initialize video stream for participant
+}
 
-    const peerConnection = new RTCPeerConnection(servers);
-    peerConnections[callDoc.id] = peerConnection; // Store the peer connection
-
-    // Send local tracks to the new peer connection
-    const localTracks = localVideo.srcObject.getTracks();
-    localTracks.forEach(track => peerConnection.addTrack(track, localVideo.srcObject));
-
+// Function to initialize video stream
+async function initializeVideoStream(videoElementId) {
     try {
-        // Create SDP offer
-        const offerDescription = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offerDescription);
-
-        // Save the offer to Firestore
-        await callDoc.set({ offer: { type: offerDescription.type, sdp: offerDescription.sdp } });
-
-        // Listen for answer from the peer
-        callDoc.onSnapshot((snapshot) => {
-            const data = snapshot.data();
-            if (data && data.answer) {
-                const answerDescription = new RTCSessionDescription(data.answer);
-                peerConnection.setRemoteDescription(answerDescription);
-            }
-        });
-
-        // Send ICE candidates
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                offerCandidates.add(event.candidate.toJSON());
-            }
-        };
-
-        // Handle incoming streams
-        peerConnection.ontrack = (event) => {
-            addRemoteStream(event.streams[0], callDoc.id);
-        };
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        const localVideo = document.getElementById(videoElementId);
+        localVideo.srcObject = stream; // Set local video stream
     } catch (error) {
-        console.error('Error creating offer:', error);
+        console.error('Error accessing media devices:', error);
+        alert('Please allow access to your camera and microphone.');
     }
 }
 
-// Function to join a call (SDP answer)
-async function joinCall() {
-    const callId = document.getElementById('joinId').value;
-    const callDoc = firestore.collection('calls').doc(callId);
-    const answerCandidates = callDoc.collection('answerCandidates');
-
-    try {
-        // Get the offer from Firestore
-        const callData = (await callDoc.get()).data();
-        if (callData && callData.offer) {
-            const offerDescription = new RTCSessionDescription(callData.offer);
-            const peerConnection = new RTCPeerConnection(servers);
-            peerConnections[callId] = peerConnection; // Store the peer connection
-
-            // Handle incoming streams
-            peerConnection.ontrack = (event) => {
-                addRemoteStream(event.streams[0], callId);
-            };
-
-            await peerConnection.setRemoteDescription(offerDescription);
-
-            // Create SDP answer
-            const answerDescription = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answerDescription);
-
-            // Save the answer to Firestore
-            await callDoc.update({ answer: { type: answerDescription.type, sdp: answerDescription.sdp } });
-
-            // Send ICE candidates
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    answerCandidates.add(event.candidate.toJSON());
-                }
-            };
-
-            // Listen for ICE candidates from the caller
-            callDoc.collection('offerCandidates').onSnapshot(snapshot => {
-                snapshot.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                        const candidate = new RTCIceCandidate(change.doc.data());
-                        peerConnection.addIceCandidate(candidate);
-                    }
-                });
-            });
-        } else {
-            console.error('No offer found for this call ID.');
-        }
-    } catch (error) {
-        console.error('Error joining call:', error);
-    }
+// Function to exit the call
+function exitCall() {
+    document.getElementById('hostContainer').style.display = 'none';
+    document.getElementById('participantContainer').style.display = 'none';
+    document.getElementById('landingPage').style.display = 'block';
 }
 
-// Add event listeners to the buttons
-document.getElementById('createCallButton').addEventListener('click', createOffer);
-document.getElementById('joinCallButton').addEventListener('click', joinCall);
+// Add event listeners to buttons
+document.getElementById('exitCallButton').addEventListener('click', exitCall);
+document.getElementById('exitCallButtonParticipant').addEventListener('click', exitCall);
+document.getElementById('endCallButton').addEventListener('click', exitCall);
