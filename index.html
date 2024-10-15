@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-User Video Conferencing App</title>
+    <link rel="stylesheet" href="styles.css"> <!-- Link to the CSS file -->
+    <script type="module" src="script.js" defer></script> <!-- Link to the JS file -->
+</head>
+<body>
+    <h1>Multi-User Video Conferencing App</h1>
+    <div id="videoContainer">
+        <div id="remoteVideos"></div>
+        <video id="localVideo" autoplay muted></video>
+    </div>
+    <div id="buttonContainer">
+        <input type="text" id="callId" placeholder="Call ID" readonly>
+        <button id="createCallButton">Create Call</button>
+        <input type="text" id="joinId" placeholder="Enter Call ID to Join">
+        <button id="joinCallButton">Join Call</button>
+    </div>
+</body>
+</html>
